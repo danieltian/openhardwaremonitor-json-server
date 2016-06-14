@@ -59,7 +59,7 @@ namespace OpenHardwareMonitorJsonServer
 
             // Start a HTTP server on port 8080.
             var listener = new HttpListener();
-            listener.Prefixes.Add("http://*:8080/");
+            listener.Prefixes.Add("http://localhost:8080/");
             listener.Start();
 
             // While the server is still running...
