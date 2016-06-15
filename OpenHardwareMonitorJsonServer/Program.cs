@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using OpenHardwareMonitor.Hardware;
 using System;
 using System.Net;
@@ -26,6 +27,44 @@ namespace OpenHardwareMonitorJsonServer
 
         public void VisitParameter(IParameter parameter) { }
         public void VisitSensor(ISensor sensor) { }
+    }
+
+    // Json.NET custom converter to output ToString() for the given property.
+    class ToStringJsonConverter : JsonConverter
+    {
+        public override bool CanConvert(Type objectType)
+        {
+            return true;
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            writer.WriteValue(value.ToString());
+        }
+    }
+
+    // Json.NET custom contract resolver. Needed in order to use the custom converter, since the custom converter is
+    // intended to be used with annotations, and we can't annotate properties in a compiled library.
+    class CustomContractResolver : DefaultContractResolver
+    {
+        protected override JsonObjectContract CreateObjectContract(Type objectType)
+        {
+            JsonObjectContract contract = base.CreateObjectContract(objectType);
+            // Use the ToString JSON converter if the type is OpenHardwareMonitor.Hardware.Identifier. Otherwise, the
+            // default serialization will serialize it as an object, and since it has no public properties, it will
+            // serialize to "Identifier: {}".
+            if (objectType == typeof(Identifier))
+            {
+                contract.Converter = new ToStringJsonConverter();
+            }
+
+            return contract;
+        }
     }
 
     class Program
@@ -74,7 +113,10 @@ namespace OpenHardwareMonitorJsonServer
                 // TODO: The data can be cleaned up some before serializing, it contains a bunch of extraneous data.
                 // The serializer in OpenHardwareMonitor's GUI library used by its own JSON server simply collects
                 // the values to serialize. It can serve as a starting point.
-                var settings = new JsonSerializerSettings() { ReferenceLoopHandling = ReferenceLoopHandling.Ignore };
+                var settings = new JsonSerializerSettings() {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                    ContractResolver = new CustomContractResolver()
+                };
                 var data = JsonConvert.SerializeObject(computer.Hardware, settings);
 
                 var buffer = Encoding.UTF8.GetBytes(data);
@@ -82,7 +124,9 @@ namespace OpenHardwareMonitorJsonServer
 
                 try
                 {
-                    await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
+                    response.AddHeader("Access-Control-Allow-Origin", "*");
+                    response.AddHeader("Content-Type", "application/json");
+                    response.OutputStream.Write(buffer, 0, buffer.Length);
                 }
                 catch (HttpListenerException)
                 {
@@ -91,7 +135,6 @@ namespace OpenHardwareMonitorJsonServer
                 }
 
                 response.OutputStream.Close();
-                response.Close();
             }
         }
     }
