@@ -4,6 +4,7 @@ using OpenHardwareMonitor.Hardware;
 using System;
 using System.Net;
 using System.Text;
+using System.Reflection;
 
 namespace OpenHardwareMonitorJsonServer
 {
@@ -52,6 +53,21 @@ namespace OpenHardwareMonitorJsonServer
     // intended to be used with annotations, and we can't annotate properties in a compiled library.
     class CustomContractResolver : DefaultContractResolver
     {
+        protected override JsonProperty CreateProperty(MemberInfo member, MemberSerialization memberSerialization)
+        {
+            JsonProperty property = base.CreateProperty(member, memberSerialization);
+            // Don't serialize the Values or Parameters properties. The Values property is an array of all the sensor
+            // readings in the past 24 hours, making the JSON size very, very large if enough time has passed. The
+            // Parameters property only holds strings on how it calculated the Value property, and can be ignored since
+            // it won't ever change.
+            if (property.PropertyName == "Values" || property.PropertyName == "Parameters")
+            {
+                property.ShouldSerialize = (x) => false;
+            }
+
+            return property;
+        }
+
         protected override JsonObjectContract CreateObjectContract(Type objectType)
         {
             JsonObjectContract contract = base.CreateObjectContract(objectType);
